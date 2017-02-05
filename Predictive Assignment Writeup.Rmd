@@ -1,0 +1,106 @@
+---
+title: "Prediction Assignment Writeup"
+author: "MonicaKay"
+output: html_document
+---
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+Data was collected from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. Participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+## Assignment
+
+The goal of this project was to predict the manner in which the participants did the exercise. This is the "classe" variable in the training set. 
+
+## Data
+
+### Getting and Cleaing Data
+
+The personal activity data was loaded into R and a summary was generated (not shown in this report) to look at the different variables we have and determine what cleaning needs to be complete.  We determined that there were a lot of missing values (NA and blank), which were removed.  We also determined that there were variables that did not relate closely with the variable we are trying to predict (such as names and times), and these were removed as well.
+
+```{r, echo = TRUE}
+pml.training <- read.csv("C:/R/Machine Learning/CourseProject/pml-training.csv", sep=",")
+pml.testing <- read.csv("C:/R/Machine Learning/CourseProject/pml-testing.csv", sep=",")
+
+pml.training <- pml.training[,!sapply(pml.training,function(x) any(is.na(x)))]
+pml.training <- pml.training[,!sapply(pml.training,function(x) any(x=="#DIV/0!"))]
+pml.training <- pml.training[,-c(1:7)]
+```
+
+## Data Splitting
+
+We split the training dataset that was provided into two subsets, one training and one testing.  This was done so that our model will be trained and evaluated solely on the training dataset and evaluated once on the test set provided.  This approach is called cross-validation, which gives a better (unbiased) estimate of the out of sample accuracy.
+
+```{r, echo = TRUE}
+library(caret)
+library(lattice)
+library(ggplot2)
+set.seed(123)
+inTrain <- createDataPartition(y=pml.training$classe, p=0.70, list = FALSE)
+training <- pml.training[inTrain,]
+testing <- pml.training[-inTrain,]
+```
+
+### Exploratory Analysis
+
+```{r, echo = TRUE, warning = FALSE}
+library(rpart)
+library(rpart.plot)
+library(rattle)
+set.seed(111)
+model.tree <- rpart(classe ~ ., method = "class", data = training)
+fancyRpartPlot(model.tree)
+```
+
+## Predictive Models
+
+Because the data we have is nonlinear, we chose to build our models utilizing classification and regression with trees.  The two algorithms chosen were RandomForest and Boosting. Both models were built using 'classe' as the dependent variable and all other variables (not removed during data cleaning) as the predictor variables.
+
+### Random Forest
+
+```{r, echo = TRUE, warning = FALSE}
+library(randomForest)
+set.seed(234)
+model.rf <- randomForest(classe ~ ., data = training)
+pred.rf <- predict(model.rf, newdata=testing)
+confusionMatrix(pred.rf,testing$classe)
+rf.accuracy <- mean(pred.rf == testing$classe)
+```
+
+### Generalized Boosting Model
+
+```{r, echo = TRUE, warning = FALSE}
+library(gbm)
+library(survival)
+library(splines)
+library(parallel)
+library(plyr)
+set.seed(345)
+model.bst <- train(classe ~ ., data = training, method = "gbm", verbose = FALSE)
+pred.bst <- predict(model.bst, newdata=testing)
+confusionMatrix(pred.bst,testing$classe)
+bst.accuracy <- mean(pred.bst == testing$classe)
+```
+
+### Model Comparison
+
+The RandomForest model had an accuracy of **`r rf.accuracy`** whereas the Boosting (gbm) model only had an accuracy of **`r bst.accuracy`**.  Therefore, we chose to use the RandomForest model to predict our 20 test cases.
+
+### Out of Sample Error
+
+```{r, echo = TRUE}
+oos.error <- 1-(sum(pred.rf == testing$classe)/length(pred.rf))
+```
+
+Because the testing set is a subset of the training model, I would expect it to have a similar (slightly lower) out of sample error as the actual testing set.  Therefore, I would expect the error to be **`r oos.error`**.
+
+## Selected Model and Test Data Prediction
+
+The Random Forest model was selected as it had the highest accuracy, **(`r rf.accuracy`)**.  This model will be used to predict the 20 test cases for this assignment.
+
+```{r, echo = TRUE}
+predictTest <- predict(model.rf, newdata=pml.testing)
+predictTest
+```
